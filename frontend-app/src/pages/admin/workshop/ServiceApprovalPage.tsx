@@ -20,6 +20,12 @@ import {
 } from 'lucide-react';
 import API from '../../../services/api';
 import { showToast } from '../../../utils/swalHelper';
+import { WorkshopProcessStepper } from '../../../components/workshop/WorkshopProcessStepper';
+import {
+  getWorkshopStatusLabel,
+  getWorkshopWorkflowStageId,
+  getWorkshopWorkflowStageIdFromQuery,
+} from '../../../components/workshop/workshopStages';
 
 interface DurationOption {
   label: string;
@@ -40,6 +46,7 @@ export const ServiceApprovalPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnStage = searchParams.get('stage') || 'waiting_acc';
+  const viewedStage = getWorkshopWorkflowStageIdFromQuery(searchParams.get('viewStage'));
 
   const [order, setOrder] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +54,17 @@ export const ServiceApprovalPage: React.FC = () => {
 
   // State Checklist Item ACC & Estimasi Waktu (dalam Jam)
   const [itemsState, setItemsState] = useState<
-    { id: number; name: string; type: string; price: number; quantity: number; isApproved: boolean }[]
+    {
+      id: number;
+      name: string;
+      type: string;
+      typeAvailable: boolean;
+      price: number;
+      priceAvailable: boolean;
+      quantity: number;
+      quantityAvailable: boolean;
+      isApproved: boolean;
+    }[]
   >([]);
   const [userAccNotes, setUserAccNotes] = useState('');
   const [selectedHours, setSelectedHours] = useState<number>(24); // Default 1 Hari (24 Jam)
@@ -61,18 +78,39 @@ export const ServiceApprovalPage: React.FC = () => {
         setOrder(data);
 
         const orderItems = data?.items || data?.details || data?.order_items || [];
-        if (orderItems.length > 0) {
-          setItemsState(
-            orderItems.map((it: any) => ({
-              id: it.id,
-              name: it.item_name || it.name,
-              type: it.item_type || it.type || 'sparepart',
-              price: parseFloat(it.price || it.cost || 0),
-              quantity: parseInt(it.quantity || it.qty || 1),
-              isApproved: true,
-            }))
-          );
-        }
+        const approvalHistory = Array.isArray(data?.approved_items) ? data.approved_items : [];
+        const sourceItems =
+          viewedStage === 'waiting_acc' && approvalHistory.length > 0
+            ? approvalHistory.map((snapshot: any) => ({
+                ...orderItems.find((item: any) => String(item.id) === String(snapshot.id)),
+                ...snapshot,
+              }))
+            : orderItems;
+
+        setItemsState(
+          sourceItems.map((item: any) => {
+            const price = item.price ?? item.cost;
+            const quantity = item.quantity ?? item.qty;
+            const type = item.item_type ?? item.type;
+
+            return {
+              id: item.id,
+              name: item.item_name || item.name,
+              type: type || 'unknown',
+              typeAvailable: type != null,
+              price: parseFloat(price ?? 0),
+              priceAvailable: price != null,
+              quantity: quantity == null ? 0 : parseInt(quantity),
+              quantityAvailable: quantity != null,
+              isApproved:
+                data?.status === 'CANCELLED'
+                  ? false
+                  : typeof item.is_approved === 'boolean'
+                    ? item.is_approved
+                    : true,
+            };
+          })
+        );
         setUserAccNotes(data?.user_acc_notes || '');
         if (data?.estimated_days) {
           setSelectedHours(parseInt(data.estimated_days) * 24);
@@ -86,7 +124,7 @@ export const ServiceApprovalPage: React.FC = () => {
     };
 
     if (id) fetchOrderDetail();
-  }, [id]);
+  }, [id, viewedStage]);
 
   const toggleItemApproval = (itemId: number) => {
     setItemsState((prev) =>
@@ -126,6 +164,8 @@ export const ServiceApprovalPage: React.FC = () => {
       .filter((it) => it.isApproved)
       .reduce((acc, it) => acc + it.price * it.quantity, 0) +
     parseFloat(order?.additional_cost || order?.difficulty_surcharge || 0);
+  const isCancelledOrder = order?.status === 'CANCELLED';
+  const totalSummary = isCancelledOrder ? Number(order?.total_amount || 0) : approvedTotal;
 
   const handleSubmitACC = async (actionStatus: 'IN_PROGRESS' | 'CANCELLED') => {
     try {
@@ -150,7 +190,11 @@ export const ServiceApprovalPage: React.FC = () => {
         showToast('warning', 'Dibatalkan', 'Servis telah ditandai dibatalkan.');
       }
 
-      navigate(`/admin/workshop?stage=${actionStatus === 'IN_PROGRESS' ? 'in_progress' : 'history'}`);
+      navigate(
+        actionStatus === 'IN_PROGRESS'
+          ? '/admin/workshop?stage=in_progress'
+          : '/admin/workshop/history'
+      );
     } catch (err) {
       console.error('Gagal menyimpan ACC:', err);
       const errorData = isAxiosError<{ message?: string; errors?: Record<string, string[]> }>(err)
@@ -179,6 +223,26 @@ export const ServiceApprovalPage: React.FC = () => {
   if (!order) return null;
 
   const extraCostVal = parseFloat(order.additional_cost || order.difficulty_surcharge || 0);
+  const currentStage = getWorkshopWorkflowStageId(order.status);
+  const isTerminalOrder = ['COMPLETED', 'CANCELLED'].includes(order.status);
+  const isReadOnlyView = isTerminalOrder || (viewedStage !== undefined && viewedStage !== currentStage);
+  const savedTargetDate = order.estimated_completion_date
+    ? new Date(order.estimated_completion_date)
+    : null;
+  const savedDurationDays = Number(order.estimated_days);
+  const targetDisplay = isReadOnlyView
+    ? savedTargetDate && !Number.isNaN(savedTargetDate.getTime())
+      ? savedTargetDate.toLocaleString('id-ID', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : Number.isFinite(savedDurationDays) && savedDurationDays > 0
+        ? `Durasi ${savedDurationDays} Hari`
+        : 'Belum tersimpan'
+    : getFormattedTargetDisplay(selectedHours);
 
   return (
     <div className="space-y-5 w-full pb-16 font-sans">
@@ -187,7 +251,11 @@ export const ServiceApprovalPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate(`/admin/workshop?stage=${returnStage}`)}
+            onClick={() =>
+              returnStage === 'history'
+                ? navigate('/admin/workshop/history')
+                : navigate(`/admin/workshop?stage=${returnStage}`)
+            }
             className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl transition shadow-2xs flex items-center justify-center group cursor-pointer"
             title="Kembali ke Daftar Workshop"
           >
@@ -206,11 +274,28 @@ export const ServiceApprovalPage: React.FC = () => {
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <span className="text-[11px] font-semibold text-slate-400">Status:</span>
-          <span className="bg-amber-500 text-white text-[11px] font-extrabold px-3 py-1 rounded-lg uppercase tracking-wider font-mono shadow-2xs">
-            {order.status || 'PENDING_ACC'}
+          <span
+            className={`text-white text-[11px] font-extrabold px-3 py-1 rounded-lg uppercase tracking-wider font-mono shadow-2xs ${
+              order.status === 'COMPLETED'
+                ? 'bg-emerald-600'
+                : order.status === 'CANCELLED'
+                  ? 'bg-red-500'
+                  : 'bg-amber-500'
+            }`}
+          >
+            {getWorkshopStatusLabel(order.status || 'PENDING_ACC')}
           </span>
         </div>
       </div>
+
+      <WorkshopProcessStepper
+        orderId={order.id}
+        currentStage={currentStage}
+        viewedStage={viewedStage}
+        isCompleted={order.status === 'COMPLETED'}
+        isCancelled={order.status === 'CANCELLED'}
+        returnStage={returnStage}
+      />
 
       {/* WORKSPACE GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -296,14 +381,19 @@ export const ServiceApprovalPage: React.FC = () => {
             <div>
               <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                 <ClipboardCheck className="w-4 h-4 text-emerald-600" />
-                Checklist Item Dikerjakan
+                {isReadOnlyView ? 'Riwayat Persetujuan Item' : 'Checklist Item Dikerjakan'}
               </h2>
               <p className="text-[10px] text-slate-500">
-                Centang item yang disetujui pelanggan via WhatsApp / Konfirmasi langsung.
+                {isCancelledOrder
+                  ? 'Order dibatalkan sebelum item mendapat persetujuan pengerjaan.'
+                  : isReadOnlyView
+                  ? 'Tampilkan status persetujuan yang masih tersimpan dari proses ACC.'
+                  : 'Centang item yang disetujui pelanggan via WhatsApp / Konfirmasi langsung.'}
               </p>
             </div>
             <span className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1 rounded-lg self-start sm:self-auto">
-              Item Disetujui: <strong className="text-emerald-600">{itemsState.filter((i) => i.isApproved).length}</strong> / {itemsState.length}
+              {isCancelledOrder ? 'Item dilanjutkan:' : 'Item Disetujui:'}{' '}
+              <strong className="text-emerald-600">{itemsState.filter((i) => i.isApproved).length}</strong> / {itemsState.length}
             </span>
           </div>
 
@@ -322,38 +412,71 @@ export const ServiceApprovalPage: React.FC = () => {
                     type="checkbox"
                     checked={item.isApproved}
                     onChange={() => toggleItemApproval(item.id)}
-                    className="w-4 h-4 accent-emerald-600 rounded cursor-pointer shrink-0"
+                    disabled={isReadOnlyView}
+                    className="w-4 h-4 accent-emerald-600 rounded cursor-pointer shrink-0 disabled:cursor-not-allowed"
                   />
                   <div className="p-2 bg-white rounded-lg border border-slate-200 shadow-2xs shrink-0">
                     {item.type === 'service' || item.type === 'jasa' ? (
                       <Wrench className="w-4 h-4 text-blue-600" />
-                    ) : (
+                    ) : item.typeAvailable ? (
                       <Package className="w-4 h-4 text-red-600" />
+                    ) : (
+                      <FileText className="w-4 h-4 text-slate-500" />
                     )}
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
+                      {isReadOnlyView && !item.typeAvailable && (
+                        <span className="rounded px-1.5 py-0.5 text-[8px] font-bold uppercase bg-slate-200 text-slate-600">
+                          Jenis tidak tersimpan
+                        </span>
+                      )}
+                      {isReadOnlyView && (
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[8px] font-bold uppercase ${
+                            item.isApproved
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {isCancelledOrder
+                            ? 'Tidak dilanjutkan'
+                            : item.isApproved
+                              ? 'Disetujui'
+                              : 'Tidak disetujui'}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[10px] font-mono text-slate-500">
-                      Rp {item.price.toLocaleString('id-ID')} / unit
+                      {item.priceAvailable
+                        ? `Rp ${item.price.toLocaleString('id-ID')} / unit`
+                        : 'Harga item tidak tersimpan'}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0">
-                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-1 rounded-lg shadow-2xs">
-                    <span className="text-[10px] text-slate-400 font-bold">Qty:</span>
-                    <input
-                      type="number"
-                      min="1"
-                      disabled={!item.isApproved}
-                      value={item.quantity}
-                      onChange={(e) => handleQtyChange(item.id, parseInt(e.target.value) || 1)}
-                      className="w-10 text-center text-xs font-bold text-slate-900 focus:outline-hidden disabled:opacity-50"
-                    />
-                  </div>
+                  {isReadOnlyView && !item.quantityAvailable ? (
+                    <span className="text-[10px] font-bold text-slate-400">Qty: tidak tersimpan</span>
+                  ) : (
+                    <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-1 rounded-lg shadow-2xs">
+                      <span className="text-[10px] text-slate-400 font-bold">Qty:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        disabled={!item.isApproved || isReadOnlyView}
+                        value={item.quantity}
+                        onChange={(e) => handleQtyChange(item.id, parseInt(e.target.value) || 1)}
+                        className="w-10 text-center text-xs font-bold text-slate-900 focus:outline-hidden disabled:opacity-50"
+                      />
+                    </div>
+                  )}
 
                   <span className="text-xs font-black text-slate-900 font-mono min-w-[90px] text-right">
-                    Rp {(item.price * item.quantity).toLocaleString('id-ID')}
+                    {item.priceAvailable && item.quantityAvailable
+                      ? `Rp ${(item.price * item.quantity).toLocaleString('id-ID')}`
+                      : 'Rincian tidak tersimpan'}
                   </span>
                 </div>
               </div>
@@ -386,7 +509,7 @@ export const ServiceApprovalPage: React.FC = () => {
                 <span>Estimasi Waktu Pengerjaan</span>
               </label>
               <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-extrabold px-2.5 py-0.5 rounded-md">
-                Target: {getFormattedTargetDisplay(selectedHours)}
+                Target: {targetDisplay}
               </span>
             </div>
 
@@ -397,8 +520,9 @@ export const ServiceApprovalPage: React.FC = () => {
                   <button
                     key={opt.label}
                     type="button"
+                    disabled={isReadOnlyView}
                     onClick={() => setSelectedHours(opt.hours)}
-                    className={`py-2.5 px-2 text-[11px] font-bold rounded-xl border transition cursor-pointer ${
+                    className={`py-2.5 px-2 text-[11px] font-bold rounded-xl border transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
                       selectedHours === opt.hours
                         ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -417,6 +541,7 @@ export const ServiceApprovalPage: React.FC = () => {
                     type="number"
                     min="1"
                     max="90"
+                    disabled={isReadOnlyView}
                     value={Math.ceil(selectedHours / 24)}
                     onChange={(e) => {
                       const val = Math.max(1, parseInt(e.target.value) || 1);
@@ -440,21 +565,24 @@ export const ServiceApprovalPage: React.FC = () => {
               rows={3}
               value={userAccNotes}
               onChange={(e) => setUserAccNotes(e.target.value)}
+              disabled={isReadOnlyView}
               placeholder="Contoh: Pelanggan setuju ganti oli & tune up saja. Kampas rem ditunda bulan depan."
-              className="w-full bg-[#F8F9FA] border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-900 focus:outline-hidden focus:border-red-600 focus:bg-white resize-none transition"
+              className="w-full bg-[#F8F9FA] border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-900 focus:outline-hidden focus:border-red-600 focus:bg-white resize-none transition disabled:cursor-not-allowed disabled:opacity-70"
             />
           </div>
 
           {/* Card Ringkasan Total & Action Buttons */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <span className="text-xs font-bold text-slate-500">Total Biaya ACC Disetujui:</span>
+              <span className="text-xs font-bold text-slate-500">
+                {isCancelledOrder ? 'Total Estimasi Saat Pembatalan:' : 'Total Biaya ACC Disetujui:'}
+              </span>
               <span className="text-xl font-black text-emerald-700 font-mono">
-                Rp {approvedTotal.toLocaleString('id-ID')}
+                Rp {totalSummary.toLocaleString('id-ID')}
               </span>
             </div>
 
-            <div className="space-y-2.5 pt-1">
+            {!isReadOnlyView ? <div className="space-y-2.5 pt-1">
               <button
                 type="button"
                 disabled={submitting}
@@ -478,7 +606,11 @@ export const ServiceApprovalPage: React.FC = () => {
                 <XCircle className="w-4 h-4" />
                 <span>Batalkan Seluruh Servis</span>
               </button>
-            </div>
+            </div> : (
+              <p className="rounded-xl bg-blue-50 px-3 py-2 text-[10px] font-medium leading-relaxed text-blue-800">
+                Data persetujuan ditampilkan saja. Untuk melanjutkan order, kembali ke tahap aktual.
+              </p>
+            )}
           </div>
         </div>
       </div>

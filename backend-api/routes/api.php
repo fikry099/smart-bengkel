@@ -1,14 +1,15 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\VehicleController;
-use App\Http\Controllers\Api\ReceptionController;
+use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerAuthController;
 use App\Http\Controllers\Api\CustomerPortalController;
-use App\Http\Controllers\Api\WorkshopController;
+use App\Http\Controllers\Api\FinanceController;
 use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ReceptionController;
+use App\Http\Controllers\Api\VehicleController;
+use App\Http\Controllers\Api\WorkshopController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,6 +32,10 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 
+    // Laporan keuangan & pencatatan pengeluaran
+    Route::get('/finance/report', [FinanceController::class, 'report']);
+    Route::post('/finance/expenses', [FinanceController::class, 'storeExpense']);
+
     // POS Admin Routes (Reception & Vehicle)
     Route::get('/vehicles/search/{plateNumber}', [VehicleController::class, 'searchByPlate']);
     Route::post('/reception/check-in', [ReceptionController::class, 'checkIn']);
@@ -49,6 +54,7 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::patch('/workshop/orders/{id}/notes', [WorkshopController::class, 'updateNotes']);
     Route::patch('/workshop/orders/{id}/status', [WorkshopController::class, 'updateStatus']);
     Route::post('/workshop/orders/{id}/submit-acc', [WorkshopController::class, 'submitCustomerAcc']);
+    Route::post('/workshop/orders/{id}/payment', [WorkshopController::class, 'recordPayment']);
 
     // Modul Category
     Route::get('/categories', [CategoryController::class, 'index']);

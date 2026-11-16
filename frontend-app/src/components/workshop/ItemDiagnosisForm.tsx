@@ -197,7 +197,9 @@ export const ItemDiagnosisForm: React.FC<ItemDiagnosisFormProps> = ({
     <div className="space-y-4 font-sans">
       <div className="space-y-2">
         <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-          DAFTAR SPAREPART & JASA TERPASANG
+          {isReadOnly && items.some((item) => typeof item.is_approved === 'boolean')
+            ? 'RIWAYAT USULAN & STATUS PERSETUJUAN'
+            : 'DAFTAR SPAREPART & JASA TERPASANG'}
         </label>
 
         {(items && items.length > 0) || additionalCost > 0 ? (
@@ -205,7 +207,13 @@ export const ItemDiagnosisForm: React.FC<ItemDiagnosisFormProps> = ({
             {items.map((item, idx) => {
               const priceVal = parseFloat(item.price ?? item.cost ?? item.selling_price ?? 0);
               const qtyVal = parseInt(item.quantity ?? item.qty ?? 1);
-              const subtotal = priceVal * qtyVal;
+              const hasPrice = item.price != null || item.cost != null || item.selling_price != null;
+              const hasQuantity = item.quantity != null || item.qty != null;
+              const subtotal = hasPrice && hasQuantity ? priceVal * qtyVal : null;
+              const typeLabel =
+                item.item_type ||
+                item.type ||
+                (isReadOnly && item.is_approved === false ? 'Jenis tidak tersimpan' : 'sparepart');
 
               return (
                 <div
@@ -217,22 +225,37 @@ export const ItemDiagnosisForm: React.FC<ItemDiagnosisFormProps> = ({
                       <span className="font-bold text-slate-900">{item.item_name || item.name}</span>
                       <span
                         className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
-                          (item.item_type || item.type) === 'service'
+                          typeLabel === 'service' || typeLabel === 'jasa'
                             ? 'bg-blue-100 text-blue-700'
-                            : 'bg-amber-100 text-amber-800'
+                            : typeLabel === 'Jenis tidak tersimpan'
+                              ? 'bg-slate-200 text-slate-600'
+                              : 'bg-amber-100 text-amber-800'
                         }`}
                       >
-                        {item.item_type || item.type || 'sparepart'}
+                        {typeLabel}
                       </span>
+                      {isReadOnly && typeof item.is_approved === 'boolean' && (
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                            item.is_approved
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {item.is_approved ? 'Disetujui' : 'Tidak disetujui'}
+                        </span>
+                      )}
                     </div>
                     <span className="text-[10px] text-slate-500 font-mono">
-                      Rp {priceVal.toLocaleString('id-ID')} x {qtyVal}
+                      {hasPrice
+                        ? `Rp ${priceVal.toLocaleString('id-ID')}${hasQuantity ? ` x ${qtyVal}` : ''}`
+                        : 'Rincian harga tidak tersimpan'}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-3">
                     <span className="font-black text-slate-900">
-                      Rp {subtotal.toLocaleString('id-ID')}
+                      {subtotal === null ? 'Rincian tidak tersimpan' : `Rp ${subtotal.toLocaleString('id-ID')}`}
                     </span>
                     {!isReadOnly && (
                       <button

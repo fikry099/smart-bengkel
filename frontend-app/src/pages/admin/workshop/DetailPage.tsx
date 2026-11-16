@@ -10,13 +10,19 @@ import { showToast } from '../../../utils/swalHelper';
 
 import { ItemDiagnosisForm } from '../../../components/workshop/ItemDiagnosisForm';
 import { WorkshopActionFooter } from '../../../components/workshop/WorkshopActionFooter';
-import { getWorkshopStatusLabel } from '../../../components/workshop/workshopStages';
+import { WorkshopProcessStepper } from '../../../components/workshop/WorkshopProcessStepper';
+import {
+  getWorkshopStatusLabel,
+  getWorkshopWorkflowStageId,
+  getWorkshopWorkflowStageIdFromQuery,
+} from '../../../components/workshop/workshopStages';
 
 export const WorkshopDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnStage = searchParams.get('stage') || 'all';
+  const viewedStage = getWorkshopWorkflowStageIdFromQuery(searchParams.get('viewStage'));
 
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -318,14 +324,38 @@ export const WorkshopDetailPage: React.FC = () => {
 
   const orderItemsList = selectedOrder.items || selectedOrder.details || selectedOrder.order_items || [];
   const extraCostVal = parseFloat(selectedOrder.additional_cost || selectedOrder.difficulty_surcharge || 0);
+  const currentStage = getWorkshopWorkflowStageId(selectedOrder.status);
+  const isTerminalOrder = ['COMPLETED', 'CANCELLED'].includes(selectedOrder.status);
+  const isReadOnlyView = isTerminalOrder || (viewedStage !== undefined && viewedStage !== currentStage);
+  const isViewingDiagnosis = isReadOnlyView && viewedStage === 'diagnosis';
+  const approvalHistory = Array.isArray(selectedOrder.approved_items)
+    ? selectedOrder.approved_items
+    : [];
+  const diagnosisItemsList =
+    isViewingDiagnosis && approvalHistory.length > 0
+      ? approvalHistory.map((snapshot: any) => ({
+          ...orderItemsList.find((item: any) => String(item.id) === String(snapshot.id)),
+          ...snapshot,
+        }))
+      : orderItemsList;
 
-  const isPostApprovalState = [
+  const isPostApprovalState = !isViewingDiagnosis && [
     'IN_PROGRESS',
     'READY_FOR_PICKUP',
     'READY',
     'COMPLETED',
     'CANCELLED',
   ].includes(selectedOrder.status);
+  const progressMessage =
+    selectedOrder.status === 'CANCELLED'
+      ? 'Order ini dibatalkan. Rincian yang tersimpan ditampilkan sebagai catatan riwayat.'
+      : selectedOrder.status === 'COMPLETED'
+        ? 'Pembayaran telah dicatat lunas. Order selesai dan tersimpan di riwayat.'
+        : isReadOnlyView && viewedStage === 'in_progress'
+          ? `Tahap pengerjaan ditampilkan kembali. Status order saat ini ${getWorkshopStatusLabel(selectedOrder.status)}.`
+          : ['READY_FOR_PICKUP', 'READY'].includes(selectedOrder.status)
+            ? 'Pengerjaan servis telah selesai. Kendaraan siap untuk diambil.'
+            : 'Unit kendaraan sedang dalam tahap pengerjaan fisik oleh tim mekanik sesuai instruksi & komponen yang telah disetujui.';
 
   // Format Tampilan Status Rentang / Target Selesai
   const formatCompletionBadge = () => {
@@ -431,9 +461,13 @@ export const WorkshopDetailPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate(`/admin/workshop?stage=${returnStage}`)}
+            onClick={() =>
+              returnStage === 'history'
+                ? navigate('/admin/workshop/history')
+                : navigate(`/admin/workshop?stage=${returnStage}`)
+            }
             className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl transition shadow-2xs flex items-center justify-center group cursor-pointer"
-            title="Kembali ke Daftar Antrean"
+            title={returnStage === 'history' ? 'Kembali ke Riwayat Workshop' : 'Kembali ke Daftar Workshop'}
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
           </button>
@@ -453,13 +487,26 @@ export const WorkshopDetailPage: React.FC = () => {
           <span className="text-[11px] font-semibold text-slate-400">Status:</span>
           <span
             className={`text-white text-[11px] font-extrabold px-3 py-1 rounded-lg uppercase tracking-wider font-mono shadow-2xs ${
-              isPostApprovalState ? 'bg-emerald-600' : 'bg-red-500'
+              selectedOrder.status === 'CANCELLED'
+                ? 'bg-red-500'
+                : isPostApprovalState
+                  ? 'bg-emerald-600'
+                  : 'bg-red-500'
             }`}
           >
             {getWorkshopStatusLabel(selectedOrder.status)}
           </span>
         </div>
       </div>
+
+      <WorkshopProcessStepper
+        orderId={selectedOrder.id}
+        currentStage={currentStage}
+        viewedStage={viewedStage}
+        isCompleted={selectedOrder.status === 'COMPLETED'}
+        isCancelled={selectedOrder.status === 'CANCELLED'}
+        returnStage={returnStage}
+      />
 
       {/* 2. MAIN WORKSPACE GRID */}
       {isPostApprovalState ? (
@@ -586,9 +633,7 @@ export const WorkshopDetailPage: React.FC = () => {
 
               {/* Keterangan Singkat Progress */}
               <p className="text-[11px] text-slate-300 leading-relaxed font-medium relative z-10 opacity-90">
-                {['READY_FOR_PICKUP', 'READY'].includes(selectedOrder.status)
-                  ? 'Pengerjaan servis telah selesai. Kendaraan siap untuk diambil.'
-                  : 'Unit kendaraan sedang dalam tahap pengerjaan fisik oleh tim mekanik sesuai instruksi & komponen yang telah disetujui.'}
+                {progressMessage}
               </p>
             </div>
 
@@ -628,7 +673,57 @@ export const WorkshopDetailPage: React.FC = () => {
               </div>
             )}
 
-            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5">
+            {selectedOrder.status === 'COMPLETED' && (
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                  Rincian Pembayaran
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <span className="block text-[10px] font-bold text-slate-400">Metode</span>
+                    <span className="font-bold text-slate-800">
+                      {selectedOrder.payment_method === 'CASH'
+                        ? 'Tunai'
+                        : selectedOrder.payment_method === 'TRANSFER'
+                          ? 'Transfer Bank'
+                          : selectedOrder.payment_method === 'QRIS'
+                            ? 'QRIS'
+                            : '-'}
+                    </span>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <span className="block text-[10px] font-bold text-slate-400">Waktu Pembayaran</span>
+                    <span className="font-bold text-slate-800">
+                      {selectedOrder.paid_at
+                        ? new Date(selectedOrder.paid_at).toLocaleString('id-ID')
+                        : '-'}
+                    </span>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <span className="block text-[10px] font-bold text-slate-400">Uang Diterima</span>
+                    <span className="font-bold text-slate-800">
+                      Rp {Number(selectedOrder.amount_received || 0).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <span className="block text-[10px] font-bold text-slate-400">Kembalian</span>
+                    <span className="font-bold text-slate-800">
+                      Rp {Number(selectedOrder.change_amount || 0).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                  {selectedOrder.payment_reference && (
+                    <div className="col-span-2 rounded-xl bg-slate-50 p-3">
+                      <span className="block text-[10px] font-bold text-slate-400">Referensi</span>
+                      <span className="font-mono font-bold text-slate-800">
+                        {selectedOrder.payment_reference}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isReadOnlyView && <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5">
               {/* Garis pemisah atas card tindakan dihilangkan */}
               <WorkshopActionFooter
                 status={selectedOrder.status}
@@ -638,7 +733,7 @@ export const WorkshopDetailPage: React.FC = () => {
                 onSendWhatsApp={handleSendWhatsAppEstimate}
                 onCompleteAndNotifyWhatsApp={handleCompleteAndNotifyWhatsApp}
               />
-            </div>
+            </div>}
           </div>
         </div>
       ) : (
@@ -662,9 +757,10 @@ export const WorkshopDetailPage: React.FC = () => {
                 <textarea
                   value={additionalNotes}
                   onChange={handleNotesChange}
+                  disabled={isReadOnlyView}
                   placeholder="Tuliskan temuan fisik pembongkaran atau part aus tambahan..."
                   rows={4}
-                  className="w-full bg-[#F8F9FA] border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-900 focus:outline-hidden focus:border-red-600 focus:bg-white resize-none transition"
+                  className="w-full bg-[#F8F9FA] border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-900 focus:outline-hidden focus:border-red-600 focus:bg-white resize-none transition disabled:cursor-not-allowed disabled:opacity-70"
                 />
               </div>
             </div>
@@ -697,28 +793,30 @@ export const WorkshopDetailPage: React.FC = () => {
                 Rincian Diagnosa & Komponen Perbaikan
               </h2>
               <span className="text-xs font-medium text-slate-500">
-                Total Item: <strong className="text-slate-900">{orderItemsList.length + (extraCostVal > 0 ? 1 : 0)}</strong>
+                Total Item: <strong className="text-slate-900">{diagnosisItemsList.length + (extraCostVal > 0 ? 1 : 0)}</strong>
               </span>
             </div>
 
             <ItemDiagnosisForm
-              items={orderItemsList}
+              items={diagnosisItemsList}
               onAddItem={handleAddItem}
               onDeleteItem={handleDeleteItem}
               additionalCost={extraCostVal}
               additionalCostReason={selectedOrder.additional_cost_reason || ''}
               onSaveAdditionalCost={handleSaveAdditionalCost}
-              isReadOnly={false}
+              isReadOnly={isReadOnlyView}
             />
 
-            <WorkshopActionFooter
-              status={selectedOrder.status}
-              orderId={selectedOrder.id}
-              totalAmount={parseFloat(selectedOrder.total_amount || 0)}
-              onAdvanceStatus={handleAdvanceStatus}
-              onSendWhatsApp={handleSendWhatsAppEstimate}
-              onCompleteAndNotifyWhatsApp={handleCompleteAndNotifyWhatsApp}
-            />
+            {!isReadOnlyView && (
+              <WorkshopActionFooter
+                status={selectedOrder.status}
+                orderId={selectedOrder.id}
+                totalAmount={parseFloat(selectedOrder.total_amount || 0)}
+                onAdvanceStatus={handleAdvanceStatus}
+                onSendWhatsApp={handleSendWhatsAppEstimate}
+                onCompleteAndNotifyWhatsApp={handleCompleteAndNotifyWhatsApp}
+              />
+            )}
           </div>
         </div>
       )}

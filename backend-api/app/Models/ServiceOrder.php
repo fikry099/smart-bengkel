@@ -31,6 +31,10 @@ class ServiceOrder extends Model
         'difficulty_surcharge',
         'total_amount',
         'payment_method',
+        'amount_received',
+        'change_amount',
+        'payment_reference',
+        'paid_at',
     ];
 
     protected $casts = [
@@ -41,6 +45,9 @@ class ServiceOrder extends Model
         'additional_cost' => 'decimal:2',
         'difficulty_surcharge' => 'decimal:2',
         'total_amount' => 'decimal:2',
+        'amount_received' => 'decimal:2',
+        'change_amount' => 'decimal:2',
+        'paid_at' => 'datetime',
     ];
 
     public function vehicle()

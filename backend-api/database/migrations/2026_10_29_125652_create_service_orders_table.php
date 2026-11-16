@@ -56,6 +56,10 @@ return new class extends Migration
             $table->decimal('difficulty_surcharge', 12, 2)->default(0);
             $table->decimal('total_amount', 12, 2)->default(0);
             $table->enum('payment_method', ['CASH', 'TRANSFER', 'QRIS'])->nullable();
+            $table->decimal('amount_received', 12, 2)->nullable();
+            $table->decimal('change_amount', 12, 2)->default(0);
+            $table->string('payment_reference')->nullable();
+            $table->timestamp('paid_at')->nullable();
             
             $table->timestamps();
         });

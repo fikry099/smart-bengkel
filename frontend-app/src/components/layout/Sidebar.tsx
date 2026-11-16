@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   ClipboardList,
   Wrench,
   Package,
   DollarSign,
+  History,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -18,8 +19,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggle,
 }) => {
   const [internalIsCollapsed, setInternalIsCollapsed] = useState(false);
+  const location = useLocation();
 
   const isCollapsed = externalIsCollapsed ?? internalIsCollapsed;
+  const isHistoryActive =
+    location.pathname === '/admin/workshop/history' ||
+    new URLSearchParams(location.search).get('stage') === 'history';
+  const isWorkshopActive =
+    location.pathname.startsWith('/admin/workshop') && !isHistoryActive;
 
   const handleToggle = () => {
     if (onToggle) {
@@ -30,11 +37,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const navItems = [
-    { label: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
-    { label: 'Reception & Check-in', icon: ClipboardList, path: '/admin/reception' },
-    { label: 'Service Workshop', icon: Wrench, path: '/admin/workshop?stage=diagnosis' },
-    { label: 'Inventory & Katalog', icon: Package, path: '/admin/inventory' },
-    { label: 'Laporan Keuangan', icon: DollarSign, path: '/admin/finance' },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
+    { id: 'reception', label: 'Reception & Check-in', icon: ClipboardList, path: '/admin/reception' },
+    { id: 'workshop', label: 'Service Workshop', icon: Wrench, path: '/admin/workshop?stage=diagnosis' },
+    { id: 'history', label: 'Riwayat Workshop', icon: History, path: '/admin/workshop/history' },
+    { id: 'inventory', label: 'Inventory & Katalog', icon: Package, path: '/admin/inventory' },
+    { id: 'finance', label: 'Laporan Keuangan', icon: DollarSign, path: '/admin/finance' },
   ];
 
   return (
@@ -62,18 +70,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Menu Navigasi */}
         <nav className="space-y-1.5">
-          {navItems.map((item, idx) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
-                key={idx}
+                key={item.id}
                 to={item.path}
                 title={isCollapsed ? item.label : undefined}
                 className={({ isActive }) =>
                   `flex items-center rounded-xl text-xs font-bold transition-all ${
                     isCollapsed ? 'justify-center p-3' : 'gap-3 px-3 py-3'
                   } ${
-                    isActive
+                    (item.id === 'workshop' ? isWorkshopActive : item.id === 'history' ? isHistoryActive : isActive)
                       ? 'bg-red-600 text-white shadow-lg shadow-red-600/25'
                       : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
                   }`

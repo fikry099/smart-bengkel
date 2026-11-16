@@ -6,6 +6,15 @@ export interface WorkshopStage {
   statuses: string[];
 }
 
+export const WORKSHOP_WORKFLOW_STAGE_IDS = [
+  'diagnosis',
+  'waiting_acc',
+  'in_progress',
+  'ready',
+] as const;
+
+export type WorkshopWorkflowStageId = (typeof WORKSHOP_WORKFLOW_STAGE_IDS)[number];
+
 export const WORKSHOP_STAGES: WorkshopStage[] = [
   { id: 'all', label: 'Semua Order', description: 'Semua order aktif dan riwayat.', summary: 'Tinjau seluruh order bengkel.', statuses: [] },
   { id: 'diagnosis', label: 'Diagnosa', description: 'Mulai pemeriksaan, catat temuan, lalu kirim hasil dan estimasi kepada pelanggan.', summary: 'Periksa unit dan susun estimasi servis.', statuses: ['QUEUED', 'INSPECTING', 'INSPECTED'] },
@@ -19,6 +28,24 @@ export const getWorkshopStage = (stageId: string | null | undefined): WorkshopSt
   const resolvedStageId = stageId === 'queued' ? 'diagnosis' : stageId;
   return WORKSHOP_STAGES.find((stage) => stage.id === resolvedStageId) ?? WORKSHOP_STAGES[0];
 };
+
+export const getWorkshopWorkflowStageId = (status: string): WorkshopWorkflowStageId => {
+  if (status === 'COMPLETED') return 'ready';
+  if (status === 'CANCELLED') return 'waiting_acc';
+
+  const stage = WORKSHOP_STAGES.find(
+    (candidate) =>
+      WORKSHOP_WORKFLOW_STAGE_IDS.some((stageId) => stageId === candidate.id) &&
+      candidate.statuses.includes(status)
+  );
+
+  return WORKSHOP_WORKFLOW_STAGE_IDS.find((stageId) => stageId === stage?.id) ?? 'diagnosis';
+};
+
+export const getWorkshopWorkflowStageIdFromQuery = (
+  stageId: string | null
+): WorkshopWorkflowStageId | undefined =>
+  WORKSHOP_WORKFLOW_STAGE_IDS.find((workflowStageId) => workflowStageId === stageId);
 
 export const getWorkshopStatusLabel = (status: string): string => {
   switch (status) {
@@ -59,7 +86,7 @@ export const getWorkshopActionLabel = (status: string): string => {
       return 'Lihat Pengerjaan';
     case 'READY_FOR_PICKUP':
     case 'READY':
-      return 'Lihat Order';
+      return 'Proses Pembayaran';
     case 'COMPLETED':
     case 'CANCELLED':
       return 'Lihat Riwayat';

@@ -51,6 +51,7 @@ class WorkshopController extends Controller
 
         return DB::transaction(function () use ($validated, $orderId) {
             $order = ServiceOrder::lockForUpdate()->findOrFail($orderId);
+            $this->ensureOrderCanBeEdited($order);
             $finalPrice = $validated['price'] ?? $validated['cost'] ?? 0;
             $addQty = $validated['quantity'] ?? 1;
 
@@ -111,6 +112,7 @@ class WorkshopController extends Controller
 
         return DB::transaction(function () use ($validated, $orderId, $itemId) {
             $order = ServiceOrder::lockForUpdate()->findOrFail($orderId);
+            $this->ensureOrderCanBeEdited($order);
             $item = OrderItem::where('service_order_id', $orderId)
                 ->where('id', $itemId)
                 ->lockForUpdate()
@@ -151,6 +153,7 @@ class WorkshopController extends Controller
     {
         return DB::transaction(function () use ($orderId, $itemId) {
             $order = ServiceOrder::lockForUpdate()->findOrFail($orderId);
+            $this->ensureOrderCanBeEdited($order);
             $item = OrderItem::where('service_order_id', $orderId)
                 ->where('id', $itemId)
                 ->lockForUpdate()
@@ -177,15 +180,18 @@ class WorkshopController extends Controller
             'additional_cost_reason' => 'nullable|string',
         ]);
 
-        $order = ServiceOrder::findOrFail($orderId);
-        $order->additional_cost = $validated['additional_cost'];
-        $order->additional_cost_reason = $validated['additional_cost_reason'] ?? null;
-        $order->recalculateTotal();
+        return DB::transaction(function () use ($validated, $orderId) {
+            $order = ServiceOrder::lockForUpdate()->findOrFail($orderId);
+            $this->ensureOrderCanBeEdited($order);
+            $order->additional_cost = $validated['additional_cost'];
+            $order->additional_cost_reason = $validated['additional_cost_reason'] ?? null;
+            $order->recalculateTotal();
 
-        return response()->json([
-            'message' => 'Biaya tambahan berhasil diperbarui.',
-            'order'   => $order->load(['customer', 'vehicle', 'items'])
-        ]);
+            return response()->json([
+                'message' => 'Biaya tambahan berhasil diperbarui.',
+                'order'   => $order->load(['customer', 'vehicle', 'items'])
+            ]);
+        });
     }
 
     // 6. Update Catatan Inspeksi / Kerusakan Tambahan Mekanik
@@ -215,9 +221,43 @@ class WorkshopController extends Controller
         return DB::transaction(function () use ($validated, $orderId) {
             $order = ServiceOrder::with('items')->lockForUpdate()->findOrFail($orderId);
 
+            if ($validated['status'] === 'COMPLETED') {
+                return response()->json([
+                    'message' => 'Selesaikan order melalui proses pembayaran.',
+                ], 422);
+            }
+
             if ($validated['status'] === 'IN_PROGRESS') {
                 return response()->json([
                     'message' => 'Catat persetujuan WhatsApp melalui proses ACC sebelum memulai pengerjaan.',
+                ], 422);
+            }
+
+            if (
+                in_array($order->status, ['READY_FOR_PICKUP', 'READY'], true)
+                && ! in_array($validated['status'], [$order->status, 'CANCELLED'], true)
+            ) {
+                return response()->json([
+                    'message' => 'Order yang menunggu pembayaran tidak dapat dikembalikan ke tahap sebelumnya.',
+                ], 422);
+            }
+
+            if (
+                in_array($order->status, ['COMPLETED', 'CANCELLED'], true)
+                && $validated['status'] !== $order->status
+            ) {
+                return response()->json([
+                    'message' => 'Order yang sudah ditutup tidak dapat diubah statusnya.',
+                ], 422);
+            }
+
+            if (
+                in_array($validated['status'], ['READY_FOR_PICKUP', 'READY'], true)
+                && $order->status !== 'IN_PROGRESS'
+                && $order->status !== $validated['status']
+            ) {
+                return response()->json([
+                    'message' => 'Order harus sedang dikerjakan sebelum masuk tahap menunggu pembayaran.',
                 ], 422);
             }
 
@@ -234,6 +274,60 @@ class WorkshopController extends Controller
             return response()->json([
                 'message' => 'Status pengerjaan berhasil diperbarui.',
                 'order'   => $order->load(['customer', 'vehicle', 'items'])
+            ]);
+        });
+    }
+
+    public function recordPayment(Request $request, $orderId)
+    {
+        $validated = $request->validate([
+            'payment_method' => ['required', Rule::in(['CASH', 'TRANSFER', 'QRIS'])],
+            'amount_received' => 'required|numeric|min:0|max:9999999999.99',
+            'payment_reference' => 'nullable|string|max:100',
+        ]);
+
+        return DB::transaction(function () use ($validated, $orderId) {
+            $order = ServiceOrder::query()->lockForUpdate()->findOrFail($orderId);
+
+            if (! in_array($order->status, ['READY_FOR_PICKUP', 'READY'], true) || $order->paid_at) {
+                return response()->json([
+                    'message' => 'Order tidak berada pada tahap menunggu pembayaran.',
+                ], 422);
+            }
+
+            $amountDueCents = (int) round((float) $order->total_amount * 100);
+            $amountReceivedCents = (int) round((float) $validated['amount_received'] * 100);
+
+            if ($validated['payment_method'] === 'CASH' && $amountReceivedCents < $amountDueCents) {
+                throw ValidationException::withMessages([
+                    'amount_received' => ['Uang yang diterima kurang dari total yang harus dibayar.'],
+                ]);
+            }
+
+            if ($validated['payment_method'] !== 'CASH' && $amountReceivedCents !== $amountDueCents) {
+                throw ValidationException::withMessages([
+                    'amount_received' => ['Nominal transfer atau QRIS harus sama dengan total pembayaran.'],
+                ]);
+            }
+
+            $order->payment_method = $validated['payment_method'];
+            $order->amount_received = number_format($amountReceivedCents / 100, 2, '.', '');
+            $order->change_amount = number_format(
+                max(0, $amountReceivedCents - $amountDueCents) / 100,
+                2,
+                '.',
+                ''
+            );
+            $order->payment_reference = $validated['payment_method'] === 'CASH'
+                ? null
+                : ($validated['payment_reference'] ?? null);
+            $order->paid_at = now();
+            $order->status = 'COMPLETED';
+            $order->save();
+
+            return response()->json([
+                'message' => 'Pembayaran berhasil dicatat dan order telah diselesaikan.',
+                'order' => $order->load(['customer', 'vehicle', 'items']),
             ]);
         });
     }
@@ -326,6 +420,15 @@ class WorkshopController extends Controller
     {
         foreach ($order->items as $item) {
             $this->syncItemStockDeduction($item, 0);
+        }
+    }
+
+    private function ensureOrderCanBeEdited(ServiceOrder $order): void
+    {
+        if (in_array($order->status, ['READY_FOR_PICKUP', 'READY', 'COMPLETED', 'CANCELLED'], true)) {
+            throw ValidationException::withMessages([
+                'status' => ['Order yang sudah menunggu pembayaran atau ditutup tidak dapat diubah.'],
+            ]);
         }
     }
 

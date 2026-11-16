@@ -23,7 +23,7 @@ export const LoginPage: React.FC = () => {
       loginAdmin(response.data.token, response.data.user);
 
       // Redirect ke modul reception admin
-      window.location.href = '/admin/reception';
+      window.location.href = '/admin/dashboard';
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login gagal, periksa email dan password Anda.');
     } finally {

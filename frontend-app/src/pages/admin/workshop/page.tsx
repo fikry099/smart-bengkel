@@ -7,15 +7,19 @@ import { showToast } from '../../../utils/swalHelper';
 import { WorkshopTable } from '../../../components/workshop/WorkshopTable';
 import { getWorkshopStage, WORKSHOP_STAGES } from '../../../components/workshop/workshopStages';
 
-export const WorkshopPage: React.FC = () => {
+interface WorkshopPageProps {
+  initialStage?: string;
+}
+
+export const WorkshopPage: React.FC<WorkshopPageProps> = ({ initialStage }) => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [serviceOrders, setServiceOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const activeStage = getWorkshopStage(searchParams.get('stage') || 'diagnosis');
+  const activeStage = getWorkshopStage(initialStage || searchParams.get('stage') || 'diagnosis');
+  const isHistoryView = activeStage.id === 'history';
   const workflowStages = WORKSHOP_STAGES.filter((stage) => !['all', 'history'].includes(stage.id));
-  const historyStage = getWorkshopStage('history');
 
   // Ambil data antrean dari backend
   const fetchWorkshopOrders = async () => {
@@ -75,6 +79,11 @@ export const WorkshopPage: React.FC = () => {
       return;
     }
 
+    if (['READY_FOR_PICKUP', 'READY'].includes(order.status)) {
+      navigate(`/admin/workshop/${order.id}/payment`);
+      return;
+    }
+
     handleSelectOrder(order);
   };
 
@@ -87,9 +96,13 @@ export const WorkshopPage: React.FC = () => {
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Service Workshop</h1>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            {isHistoryView ? 'Riwayat Workshop' : 'Service Workshop'}
+          </h1>
           <p className="text-xs text-slate-600">
-            Kelola diagnosa, persetujuan pelanggan, pengerjaan servis, dan informasi kendaraan selesai.
+            {isHistoryView
+              ? 'Tinjau order yang sudah selesai atau dibatalkan dengan format dan rincian order yang sama.'
+              : 'Kelola diagnosa, persetujuan pelanggan, pengerjaan servis, dan informasi kendaraan selesai.'}
           </p>
         </div>
 
@@ -102,7 +115,8 @@ export const WorkshopPage: React.FC = () => {
         </button>
       </div>
 
-      <section className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 space-y-4">
+      {!isHistoryView && (
+        <section className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
           <div>
             {workflowStages.some((stage) => stage.id === activeStage.id) && (
@@ -125,17 +139,6 @@ export const WorkshopPage: React.FC = () => {
               }`}
             >
               Semua Order ({getStageCount(getWorkshopStage('all'))})
-            </button>
-            <button
-              type="button"
-              onClick={() => handleStageSelect('history')}
-              className={`px-3 py-2 rounded-lg text-[11px] font-bold transition ${
-                activeStage.id === 'history'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Riwayat ({getStageCount(historyStage)})
             </button>
           </div>
         </div>
@@ -180,7 +183,8 @@ export const WorkshopPage: React.FC = () => {
             );
           })}
         </div>
-      </section>
+        </section>
+      )}
 
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6 space-y-5">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">

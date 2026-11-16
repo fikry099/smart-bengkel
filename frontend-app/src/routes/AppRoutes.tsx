@@ -20,6 +20,7 @@ import { ReceptionPage as AdminReceptionPage } from '../pages/admin/reception/pa
 import { WorkshopPage as AdminWorkshopPage } from '../pages/admin/workshop/page';
 import { WorkshopDetailPage } from '../pages/admin/workshop/DetailPage';
 import { ServiceApprovalPage } from '../pages/admin/workshop/ServiceApprovalPage';
+import { PaymentPage } from '../pages/admin/workshop/PaymentPage';
 import { InventoryPage as AdminInventoryPage } from '../pages/admin/inventory/page';
 import { FinancePage as AdminFinancePage } from '../pages/admin/finance/page';
 
@@ -63,7 +64,9 @@ export const AppRoutes: React.FC = () => {
 
         {/* Modul Workshop & Sub-routes (Urutan spesifik diletakkan lebih atas) */}
         <Route path="workshop" element={<AdminWorkshopPage />} />
+        <Route path="workshop/history" element={<AdminWorkshopPage initialStage="history" />} />
         <Route path="workshop/:id/approval" element={<ServiceApprovalPage />} />
+        <Route path="workshop/:id/payment" element={<PaymentPage />} />
         <Route path="workshop/:id" element={<WorkshopDetailPage />} />
 
         <Route path="inventory" element={<AdminInventoryPage />} />
