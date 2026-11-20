@@ -9,6 +9,16 @@ use Illuminate\Http\Request;
 
 class CustomerPortalController extends Controller
 {
+    public function getProfile(Request $request)
+    {
+        /** @var Customer $customer */
+        $customer = $request->user();
+
+        return response()->json([
+            'customer' => $customer->load('vehicles'),
+        ]);
+    }
+
     // 1. Ambil Data Order Servis Aktif Pelanggan
     public function getActiveService(Request $request)
     {
@@ -25,7 +35,7 @@ class CustomerPortalController extends Controller
             ->latest()
             ->first();
 
-        if (!$activeOrder) {
+        if (! $activeOrder) {
             return response()->json([
                 'has_active_service' => false,
                 'message' => 'Tidak ada kendaraan yang sedang diservis saat ini.'

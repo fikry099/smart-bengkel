@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Vehicle;
 use App\Models\ServiceOrder;
 use App\Models\Product;
+use App\Support\WhatsAppNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
@@ -37,15 +38,17 @@ class ReceptionController extends Controller
         return DB::transaction(function () use ($validated) {
             $formattedPlate = strtoupper(trim($validated['plate_number']));
             $customerAddress = $validated['customer_address'] ?? null;
+            $phone = WhatsAppNumber::normalize($validated['whatsapp_number']);
 
             // 2. Simpan / Update Data Pelanggan (Termasuk address)
-            $customer = Customer::firstOrCreate(
-                ['whatsapp_number' => $validated['whatsapp_number']],
-                [
+            $customer = WhatsAppNumber::findCustomer($phone);
+            if (! $customer) {
+                $customer = Customer::create([
                     'name'    => $validated['customer_name'],
-                    'address' => $customerAddress, // <-- DITAMBAHKAN
-                ]
-            );
+                    'whatsapp_number' => $phone,
+                    'address' => $customerAddress,
+                ]);
+            }
 
             // Update jika ada perubahan nama atau alamat
             $updateData = [];
@@ -95,7 +98,7 @@ class ReceptionController extends Controller
             }
 
             // 5. Generate Kode Order Unik
-            $orderCode = 'BAS-' . date('Ymd') . '-' . strtoupper(Str::random(4));
+            $orderCode = 'BAS-'.date('Ymd').'-'.strtoupper(Str::random(4));
 
             // 6. Buat Tiket ServiceOrder Baru (Termasuk customer_address)
             $order = ServiceOrder::create([

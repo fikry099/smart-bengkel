@@ -1,5 +1,17 @@
 import { CustomerAPI } from './api';
 
+export interface CustomerProfile {
+  id: number;
+  name: string;
+  whatsapp_number: string;
+  address?: string | null;
+  vehicles: Array<{
+    id: number;
+    plate_number: string;
+    brand_model: string;
+  }>;
+}
+
 export interface CustomerOrderItem {
   id: number;
   item_name: string;
@@ -24,6 +36,11 @@ export interface CustomerServiceOrder {
   updated_at: string;
   vehicle?: { brand_model: string };
   items: CustomerOrderItem[];
+}
+
+export async function fetchCustomerProfile(): Promise<CustomerProfile> {
+  const response = await CustomerAPI.get<{ customer: CustomerProfile }>('/customer/profile');
+  return response.data.customer;
 }
 
 export async function fetchActiveService(): Promise<CustomerServiceOrder | null> {

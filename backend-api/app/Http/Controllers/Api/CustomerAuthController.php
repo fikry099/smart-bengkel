@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Customer;
+use App\Support\WhatsAppNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http; // 1. Import Facade HTTP bawaan Laravel
@@ -17,17 +17,14 @@ class CustomerAuthController extends Controller
             'whatsapp_number' => 'required|string',
         ]);
 
-        // Format nomor WhatsApp (Ubah 08xx / 628xx menjadi format standar 628xx)
-        $phone = preg_replace('/[^0-9]/', '', $request->whatsapp_number);
-        if (str_starts_with($phone, '0')) {
-            $phone = '62' . substr($phone, 1);
-        }
+        $phone = WhatsAppNumber::normalize($request->whatsapp_number);
+        $customer = WhatsAppNumber::findCustomer($phone);
 
-        // Cari atau daftarkan pelanggan secara otomatis
-        $customer = Customer::firstOrCreate(
-            ['whatsapp_number' => $phone],
-            ['name' => 'Pelanggan ' . substr($phone, -4)]
-        );
+        if (! $customer) {
+            return response()->json([
+                'message' => 'Nomor WhatsApp belum terdaftar di bengkel. Silakan lakukan check-in terlebih dahulu.',
+            ], 422);
+        }
 
         // Generate 6 Digit OTP & Atur Kadaluarsa (10 Menit)
         $otpCode = rand(100000, 999999);
@@ -67,12 +64,9 @@ class CustomerAuthController extends Controller
             'otp_code' => 'required|string|size:6',
         ]);
 
-        $phone = preg_replace('/[^0-9]/', '', $request->whatsapp_number);
-        if (str_starts_with($phone, '0')) {
-            $phone = '62' . substr($phone, 1);
-        }
+        $phone = WhatsAppNumber::normalize($request->whatsapp_number);
 
-        $customer = Customer::where('whatsapp_number', $phone)->first();
+        $customer = WhatsAppNumber::findCustomer($phone);
 
         if (!$customer || $customer->otp_code !== $request->otp_code) {
             return response()->json(['message' => 'Kode OTP salah atau tidak ditemukan.'], 422);

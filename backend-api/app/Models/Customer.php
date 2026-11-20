@@ -23,4 +23,9 @@ class Customer extends Authenticatable
         'otp_code',
         'otp_expires_at',
     ];
+
+    public function vehicles()
+    {
+        return $this->hasMany(Vehicle::class);
+    }
 }

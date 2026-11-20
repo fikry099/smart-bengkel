@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\ServiceOrder;
 use App\Models\User;
+use App\Models\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -102,6 +103,26 @@ class CustomerPortalAuthorizationTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'history')
             ->assertJsonPath('history.0.order_code', 'OWN-COMPLETED');
+    }
+
+    public function test_customer_profile_only_includes_the_authenticated_customers_vehicles(): void
+    {
+        $customer = Customer::create([
+            'name' => 'Customer',
+            'whatsapp_number' => '628123456789',
+        ]);
+        Vehicle::create([
+            'customer_id' => $customer->id,
+            'plate_number' => 'AB 1234 CD',
+            'brand_model' => 'Mobil Customer',
+        ]);
+
+        Sanctum::actingAs($customer);
+
+        $this->getJson('/api/customer/profile')
+            ->assertOk()
+            ->assertJsonPath('customer.name', 'Customer')
+            ->assertJsonPath('customer.vehicles.0.plate_number', 'AB 1234 CD');
     }
 
     public function test_customer_cannot_submit_estimate_approval_through_the_portal(): void

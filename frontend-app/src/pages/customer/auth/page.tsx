@@ -17,6 +17,16 @@ export const CustomerAuthPage: React.FC = () => {
 
   // State Multi-Tap Logo (Akses Rahasia Login Admin)
   const [tapCount, setTapCount] = useState(0);
+  const formattedWaNumber = (() => {
+    const digits = waNumber.replace(/\D/g, '');
+    const localNumber = digits.startsWith('62')
+      ? digits.slice(2)
+      : digits.startsWith('0')
+        ? digits.slice(1)
+        : digits;
+
+    return `+62 ${localNumber}`;
+  })();
 
   // Handler Secret Multi-Tap (5x Ketuk)
   const handleSecretAdminTap = () => {
@@ -252,7 +262,7 @@ export const CustomerAuthPage: React.FC = () => {
                   Masukkan kode 6 digit dari WhatsApp untuk melanjutkan ke portal pelanggan.
                 </p>
                 <div className="flex justify-center items-center gap-2 pt-1 text-xs">
-                  <span className="font-bold text-slate-900">+62 {waNumber}</span>
+                  <span className="font-bold text-slate-900">{formattedWaNumber}</span>
                   <button onClick={() => setStep('wa')} className="font-bold text-red-600 hover:underline">
                     Ubah nomor
                   </button>

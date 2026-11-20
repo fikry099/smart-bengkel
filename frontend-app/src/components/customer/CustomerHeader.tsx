@@ -24,17 +24,15 @@ export const CustomerHeader: React.FC<Props> = ({ badge = 'PORTAL PELANGGAN', on
       },
     }).then((result) => {
       if (result.isConfirmed) {
-        localStorage.removeItem('customer_token');
-        localStorage.removeItem('customer_user');
-        sessionStorage.clear();
-
         showToast('info', 'Berhasil Keluar', 'Anda telah keluar dari portal pelanggan.');
 
         if (onLogout) {
           onLogout();
         } else {
+          localStorage.removeItem('customer_token');
+          localStorage.removeItem('customer_user');
           setTimeout(() => {
-            window.location.href = '/customer/login';
+            window.location.href = '/auth';
           }, 1000);
         }
       }

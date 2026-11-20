@@ -5,9 +5,11 @@ import { CustomerHomePage } from '../../pages/customer/home/page';
 import { CustomerServicePage } from '../../pages/customer/service/page';
 import { CustomerHistoryPage } from '../../pages/customer/history/page';
 import { CustomerAccountPage } from '../../pages/customer/account/page';
+import { useAuth } from '../../context/AuthContext';
 
 export const CustomerLayout: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'home' | 'service' | 'history' | 'account'>('home');
+  const { logoutCustomer } = useAuth();
 
   return (
     <div className="min-h-screen bg-[#F4F5F3] text-slate-900 font-sans selection:bg-[#E5C158]">
@@ -15,11 +17,11 @@ export const CustomerLayout: React.FC = () => {
       <div className="w-full min-h-screen bg-[#F4F5F3] flex flex-col md:flex-row relative">
         
         {/* Sidebar Navigasi (Desktop) / Bottom Nav (Mobile) */}
-        <CustomerNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
+        <CustomerNavigation activeTab={activeTab} setActiveTab={setActiveTab} onLogout={logoutCustomer} />
 
         {/* Area Konten Utama melempar ke kanan secara penuh */}
         <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-6">
-          <CustomerHeader />
+          <CustomerHeader onLogout={logoutCustomer} />
 
           <main className="flex-1 p-4 md:p-8 overflow-y-auto">
             {/* Buang max-w-3xl agar card & form membentang penuh sesuai lebar viewport */}

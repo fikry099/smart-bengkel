@@ -74,6 +74,7 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth:sanctum', 'customer'])->group(function () {
+    Route::get('/customer/profile', [CustomerPortalController::class, 'getProfile']);
     Route::get('/customer/active-service', [CustomerPortalController::class, 'getActiveService']);
     Route::get('/customer/history', [CustomerPortalController::class, 'getHistory']);
 });
